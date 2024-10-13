@@ -5,26 +5,6 @@ body {
     margin: 0;
 }
 
-/* #main-container {
-    display: flex;
-    flex-direction: row;
-} */
-
-/* #canvas {
-    height: 100%;
-    width: 80%;
-} */
-/* 
-#chat-container {
-    height: 15%;
-} */
-/* 
-#side-panel {
-    width: 20%;
-    background-color: aliceblue;
-} */
-
-
 .diagram-note {
     background-color: rgba(66, 180, 21, 0.7);
     color: White;
