@@ -1,0 +1,160 @@
+@import 'bpmn-js/dist/assets/diagram-js.css';
+@import 'bpmn-js/dist/assets/bpmn-js.css';
+@import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+
+  html, body, #root {
+    @apply h-full w-full;
+  }
+
+  /* Light theme defaults */
+  body {
+    @apply font-sans overflow-hidden;
+  }
+
+  /* Dark theme body styles */
+  .theme-dark body {
+    @apply bg-bg-primary text-text-primary;
+  }
+}
+
+/* Custom scrollbar - Light Theme */
+.theme-light ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.theme-light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.theme-light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom scrollbar - Dark Theme */
+.theme-dark ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.theme-dark ::-webkit-scrollbar-track {
+  @apply bg-bg-secondary;
+}
+
+.theme-dark ::-webkit-scrollbar-thumb {
+  @apply bg-border rounded;
+}
+
+.theme-dark ::-webkit-scrollbar-thumb:hover {
+  @apply bg-text-muted;
+}
+
+/* ============================================
+   BPMN Dark Mode Overrides
+   Only applied when .bpmn-dark-mode class is present
+   ============================================ */
+
+.bpmn-dark-mode .djs-container {
+  @apply !bg-gradient-to-br from-bg-secondary to-bg-primary;
+}
+
+/* Dark mode: Make BPMN labels visible */
+.bpmn-dark-mode .djs-container text.djs-label,
+.bpmn-dark-mode .djs-container .djs-label,
+.bpmn-dark-mode .djs-container .djs-label tspan,
+.bpmn-dark-mode .djs-container svg text.djs-label {
+  fill: #e2e8f0 !important;
+}
+
+/* Dark mode: Direct editing input */
+.bpmn-dark-mode .djs-direct-editing-content {
+  background: #1a1a25 !important;
+  color: #f8fafc !important;
+  border: 1px solid #6366f1 !important;
+  border-radius: 4px !important;
+}
+
+/* Dark mode: Selected elements highlight */
+.bpmn-dark-mode .djs-element.selected .djs-outline {
+  stroke: #6366f1 !important;
+  stroke-width: 2px !important;
+}
+
+/* Dark mode: Palette styling */
+.bpmn-dark-mode .djs-palette {
+  @apply !bg-bg-tertiary !border !border-border !rounded-lg;
+}
+
+.bpmn-dark-mode .djs-palette .entry {
+  color: #94a3b8 !important;
+}
+
+.bpmn-dark-mode .djs-palette .entry:hover {
+  @apply !bg-accent;
+  color: #fff !important;
+}
+
+/* Dark mode: Context pad styling */
+.bpmn-dark-mode .djs-context-pad {
+  @apply !bg-bg-tertiary !border !border-border !rounded-lg;
+}
+
+.bpmn-dark-mode .djs-context-pad .entry:hover {
+  @apply !bg-accent;
+}
+
+/* Dark mode: Popup menu styling */
+.bpmn-dark-mode .djs-popup {
+  @apply !bg-bg-tertiary !border !border-border !rounded-lg;
+  color: #f8fafc !important;
+}
+
+.bpmn-dark-mode .djs-popup .entry {
+  color: #f8fafc !important;
+}
+
+.bpmn-dark-mode .djs-popup .entry:hover {
+  @apply !bg-accent/20;
+}
+
+/* Voice wave animation */
+@keyframes voice-wave {
+  0%, 100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-voice-wave {
+  animation: voice-wave 0.5s ease-in-out infinite;
+}
+
+/* Pulse glow animation for mic button */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(99, 102, 241, 0.6);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
