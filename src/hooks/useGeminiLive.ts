@@ -4,16 +4,14 @@ import {
   Modality,
   ActivityHandling,
   type Session,
-  type LiveServerMessage, 
   type FunctionCall 
 } from '@google/genai';
 import { bpmnFunctionDeclarations, SYSTEM_INSTRUCTION } from '../services/geminiTools';
 import {
-  createTask,
-  createGateway,
-  createEvent,
+  createElement,
+  updateElements,
   connectElements,
-  updateElementName,
+  disconnectElements,
   deleteElement,
   exportDiagram,
   getDiagramState,
@@ -30,6 +28,7 @@ interface UseGeminiLiveOptions {
   onUserTranscript?: (text: string) => void;
   onAssistantResponse?: (text: string) => void;
   onStatusChange?: (status: ConnectionStatus) => void;
+  onRenameDiagram?: (title: string) => void;
 }
 
 // Utility to convert Float32 PCM to base64 encoded Int16
@@ -68,6 +67,7 @@ export function useGeminiLive({
   onUserTranscript,
   onAssistantResponse,
   onStatusChange,
+  onRenameDiagram,
 }: UseGeminiLiveOptions) {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [isListening, setIsListening] = useState(false);
@@ -117,17 +117,20 @@ export function useGeminiLive({
 
     try {
       switch (name) {
-        case 'createTask': {
-          const id = createTask(modeler, params as any);
-          return { success: true, elementId: id, message: `Created task "${params.name}"` };
+        case 'createElement': {
+          const id = createElement(modeler, params as any);
+          return { success: true, elementId: id, message: `Created ${params.type} element${params.name ? ` "${params.name}"` : ''}` };
         }
-        case 'createGateway': {
-          const id = createGateway(modeler, params as any);
-          return { success: true, elementId: id, message: `Created ${params.type || 'exclusive'} gateway` };
-        }
-        case 'createEvent': {
-          const id = createEvent(modeler, params as any);
-          return { success: true, elementId: id, message: `Created ${params.type || 'end'} event` };
+        case 'updateElements': {
+          const result = updateElements(modeler, params as any);
+          return { 
+            success: result.success, 
+            updated: result.updated,
+            notFound: result.notFound,
+            message: result.updated.length > 0 
+              ? `Updated ${result.updated.length} element(s)${result.notFound.length > 0 ? `, ${result.notFound.length} not found` : ''}`
+              : 'No elements updated'
+          };
         }
         case 'connectElements': {
           const id = connectElements(modeler, params as any);
@@ -136,9 +139,9 @@ export function useGeminiLive({
           }
           return { success: false, error: 'Failed to connect elements - check element IDs' };
         }
-        case 'updateElementName': {
-          const result = updateElementName(modeler, params as any);
-          return { success: result, message: result ? 'Updated element name' : 'Element not found' };
+        case 'disconnectElements': {
+          const result = disconnectElements(modeler, params as any);
+          return { success: result, message: result ? 'Disconnected elements' : 'No connection found between these elements' };
         }
         case 'deleteElement': {
           const result = deleteElement(modeler, params as any);
@@ -160,13 +163,20 @@ export function useGeminiLive({
           const xml = await exportDiagram(modeler);
           return { success: true, xml: xml.substring(0, 500) + '...' };
         }
+        case 'updateDiagramTitle': {
+          if (onRenameDiagram && params.title) {
+            onRenameDiagram(params.title);
+            return { success: true, message: `Updated diagram title to "${params.title}"` };
+          }
+          return { success: false, error: 'Unable to update diagram title' };
+        }
         default:
           return { error: `Unknown function: ${name}` };
       }
     } catch (error) {
       return { error: String(error) };
     }
-  }, [modelerRef]);
+  }, [modelerRef, onRenameDiagram]);
 
   const initializeAudioContexts = useCallback(() => {
     if (typeof window !== 'undefined') {

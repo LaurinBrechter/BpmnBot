@@ -38,7 +38,7 @@ export default function ChatTranscript({ messages, theme }: ChatTranscriptProps)
               Start speaking to create your BPMN diagram
             </p>
             <p className={`text-xs mt-1 ${isLight ? 'text-gray-400' : 'text-text-muted/60'}`}>
-              Try: "Add a task called Review Order"
+              Try: "Create a basic agentic loop. A user query comes in, we invoke the AI. If we have tool calls, we execute the tools and feed the results back to the model. "
             </p>
           </div>
         ) : (
@@ -48,18 +48,16 @@ export default function ChatTranscript({ messages, theme }: ChatTranscriptProps)
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[85%] px-4 py-2.5 rounded-2xl ${
-                  msg.role === 'user'
+                className={`max-w-[85%] px-4 py-2.5 rounded-2xl ${msg.role === 'user'
                     ? `${isLight ? 'bg-indigo-600' : 'bg-accent'} text-white rounded-br-md`
                     : `${isLight ? 'bg-gray-100 text-gray-900' : 'bg-bg-tertiary text-text-primary'} rounded-bl-md`
-                }`}
+                  }`}
               >
                 <p className="text-sm leading-relaxed">{msg.content}</p>
-                <p className={`text-[10px] mt-1 ${
-                  msg.role === 'user' 
-                    ? 'text-white/60' 
+                <p className={`text-[10px] mt-1 ${msg.role === 'user'
+                    ? 'text-white/60'
                     : isLight ? 'text-gray-400' : 'text-text-muted'
-                }`}>
+                  }`}>
                   {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>

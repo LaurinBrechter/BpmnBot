@@ -1,92 +1,173 @@
 import type BpmnModeler from 'bpmn-js/lib/Modeler';
 
-// Position tracker for auto-layout
-let nextX = 300;
-const NEXT_Y = 200;
-const SPACING_X = 150;
+// Position tracker for smarter auto-layout
+let elementCount = 0;
+const START_X = 300;
+const START_Y = 200;
+const SPACING_X = 180;
+const SPACING_Y = 120;
+const ELEMENTS_PER_ROW = 4;
 
 function getNextPosition() {
-  const pos = { x: nextX, y: NEXT_Y };
-  nextX += SPACING_X;
+  const row = Math.floor(elementCount / ELEMENTS_PER_ROW);
+  const col = elementCount % ELEMENTS_PER_ROW;
+  
+  const pos = { 
+    x: START_X + (col * SPACING_X), 
+    y: START_Y + (row * SPACING_Y) 
+  };
+  
+  elementCount++;
   return pos;
 }
 
 export function resetPositionTracker() {
-  nextX = 300;
+  elementCount = 0;
 }
 
-export interface CreateTaskParams {
-  name: string;
-  type?: 'task' | 'userTask' | 'serviceTask' | 'scriptTask';
-  x?: number;
-  y?: number;
-}
-
-export function createTask(modeler: BpmnModeler, params: CreateTaskParams): string {
-  const elementFactory = modeler.get('elementFactory') as any;
-  const modeling = modeler.get('modeling') as any;
-  const canvas = modeler.get('canvas') as any;
-
-  const typeMap: Record<string, string> = {
-    task: 'bpmn:Task',
-    userTask: 'bpmn:UserTask',
-    serviceTask: 'bpmn:ServiceTask',
-    scriptTask: 'bpmn:ScriptTask',
-  };
-
-  const bpmnType = typeMap[params.type || 'task'];
-  const position = params.x && params.y ? { x: params.x, y: params.y } : getNextPosition();
-
-  // Create shape - elementFactory will create the businessObject
-  const taskShape = elementFactory.createShape({
-    type: bpmnType,
-  });
-
-  const rootElement = canvas.getRootElement();
-  const createdShape = modeling.createShape(taskShape, position, rootElement);
-
-  // Update the name after creation
-  if (params.name) {
-    modeling.updateProperties(createdShape, { name: params.name });
+// Get position relative to another element (for connecting flows)
+export function getPositionAfter(modeler: BpmnModeler, elementId: string, direction: 'right' | 'below' = 'right'): { x: number; y: number } {
+  const elementRegistry = modeler.get('elementRegistry') as any;
+  const element = elementRegistry.get(elementId);
+  
+  if (!element) {
+    return getNextPosition();
   }
-
-  return createdShape.id;
+  
+  if (direction === 'right') {
+    return {
+      x: element.x + element.width + SPACING_X,
+      y: element.y + (element.height / 2)
+    };
+  } else {
+    return {
+      x: element.x + (element.width / 2),
+      y: element.y + element.height + SPACING_Y
+    };
+  }
 }
 
-export interface CreateGatewayParams {
+// Unified element type mapping
+const ELEMENT_TYPE_MAP: Record<string, string> = {
+  // Tasks
+  task: 'bpmn:Task',
+  userTask: 'bpmn:UserTask',
+  serviceTask: 'bpmn:ServiceTask',
+  scriptTask: 'bpmn:ScriptTask',
+  // Gateways
+  exclusiveGateway: 'bpmn:ExclusiveGateway',
+  parallelGateway: 'bpmn:ParallelGateway',
+  inclusiveGateway: 'bpmn:InclusiveGateway',
+  // Events
+  startEvent: 'bpmn:StartEvent',
+  endEvent: 'bpmn:EndEvent',
+  intermediateEvent: 'bpmn:IntermediateCatchEvent',
+};
+
+export type ElementType = keyof typeof ELEMENT_TYPE_MAP;
+
+export interface CreateElementParams {
+  type: ElementType;
   name?: string;
-  type?: 'exclusive' | 'parallel' | 'inclusive';
   x?: number;
   y?: number;
 }
 
-export function createGateway(modeler: BpmnModeler, params: CreateGatewayParams): string {
+export function createElement(modeler: BpmnModeler, params: CreateElementParams): string {
   const elementFactory = modeler.get('elementFactory') as any;
   const modeling = modeler.get('modeling') as any;
   const canvas = modeler.get('canvas') as any;
 
-  const typeMap: Record<string, string> = {
-    exclusive: 'bpmn:ExclusiveGateway',
-    parallel: 'bpmn:ParallelGateway',
-    inclusive: 'bpmn:InclusiveGateway',
-  };
+  const bpmnType = ELEMENT_TYPE_MAP[params.type];
+  if (!bpmnType) {
+    throw new Error(`Unknown element type: ${params.type}. Valid types: ${Object.keys(ELEMENT_TYPE_MAP).join(', ')}`);
+  }
 
-  const bpmnType = typeMap[params.type || 'exclusive'];
-  const position = params.x && params.y ? { x: params.x, y: params.y } : getNextPosition();
+  const position = params.x !== undefined && params.y !== undefined 
+    ? { x: params.x, y: params.y } 
+    : getNextPosition();
 
-  const gatewayShape = elementFactory.createShape({
-    type: bpmnType,
-  });
-
+  const shape = elementFactory.createShape({ type: bpmnType });
   const rootElement = canvas.getRootElement();
-  const createdShape = modeling.createShape(gatewayShape, position, rootElement);
+  const createdShape = modeling.createShape(shape, position, rootElement);
 
-  // Update the name after creation if provided
   if (params.name) {
     modeling.updateProperties(createdShape, { name: params.name });
   }
 
   return createdShape.id;
+}
+
+export interface ElementUpdate {
+  elementId: string;
+  name?: string;
+  x?: number;
+  y?: number;
+  documentation?: string;
+}
+
+export interface UpdateElementsParams {
+  updates: ElementUpdate[];
+}
+
+export interface UpdateElementsResult {
+  success: boolean;
+  updated: string[];
+  notFound: string[];
+}
+
+export function updateElements(modeler: BpmnModeler, params: UpdateElementsParams): UpdateElementsResult {
+  const elementRegistry = modeler.get('elementRegistry') as any;
+  const modeling = modeler.get('modeling') as any;
+  const bpmnFactory = modeler.get('bpmnFactory') as any;
+
+  const updated: string[] = [];
+  const notFound: string[] = [];
+
+  for (const update of params.updates) {
+    const element = elementRegistry.get(update.elementId);
+    if (!element) {
+      console.error('Element not found:', update.elementId);
+      notFound.push(update.elementId);
+      continue;
+    }
+
+    // Update position if specified
+    if (update.x !== undefined && update.y !== undefined) {
+      const deltaX = update.x - element.x;
+      const deltaY = update.y - element.y;
+      modeling.moveElements([element], { x: deltaX, y: deltaY });
+    }
+
+    // Build properties to update
+    const propertiesToUpdate: Record<string, any> = {};
+
+    if (update.name !== undefined) {
+      propertiesToUpdate.name = update.name;
+    }
+
+    if (update.documentation !== undefined) {
+      // Create BPMN documentation element
+      propertiesToUpdate.documentation = [
+        bpmnFactory.create('bpmn:Documentation', {
+          text: update.documentation,
+        }),
+      ];
+    }
+
+    // Apply property updates if any
+    if (Object.keys(propertiesToUpdate).length > 0) {
+      modeling.updateProperties(element, propertiesToUpdate);
+    }
+
+    updated.push(update.elementId);
+  }
+
+  return {
+    success: notFound.length === 0,
+    updated,
+    notFound,
+  };
 }
 
 export interface CreateEventParams {
@@ -97,32 +178,17 @@ export interface CreateEventParams {
 }
 
 export function createEvent(modeler: BpmnModeler, params: CreateEventParams): string {
-  const elementFactory = modeler.get('elementFactory') as any;
-  const modeling = modeler.get('modeling') as any;
-  const canvas = modeler.get('canvas') as any;
-
-  const typeMap: Record<string, string> = {
-    start: 'bpmn:StartEvent',
-    end: 'bpmn:EndEvent',
-    intermediate: 'bpmn:IntermediateCatchEvent',
+  const typeMap: Record<string, ElementType> = {
+    start: 'startEvent',
+    end: 'endEvent',
+    intermediate: 'intermediateEvent',
   };
-
-  const bpmnType = typeMap[params.type || 'end'];
-  const position = params.x && params.y ? { x: params.x, y: params.y } : getNextPosition();
-
-  const eventShape = elementFactory.createShape({
-    type: bpmnType,
+  return createElement(modeler, {
+    type: typeMap[params.type || 'end'],
+    name: params.name,
+    x: params.x,
+    y: params.y,
   });
-
-  const rootElement = canvas.getRootElement();
-  const createdShape = modeling.createShape(eventShape, position, rootElement);
-
-  // Update the name after creation if provided
-  if (params.name) {
-    modeling.updateProperties(createdShape, { name: params.name });
-  }
-
-  return createdShape.id;
 }
 
 export interface ConnectElementsParams {
@@ -154,28 +220,38 @@ export function connectElements(modeler: BpmnModeler, params: ConnectElementsPar
   return connection.id;
 }
 
-export interface UpdateElementNameParams {
-  elementId: string;
-  name: string;
+export interface DisconnectElementsParams {
+  sourceId: string;
+  targetId: string;
 }
 
-export function updateElementName(modeler: BpmnModeler, params: UpdateElementNameParams): boolean {
+export function disconnectElements(modeler: BpmnModeler, params: DisconnectElementsParams): boolean {
   const elementRegistry = modeler.get('elementRegistry') as any;
   const modeling = modeler.get('modeling') as any;
 
-  const element = elementRegistry.get(params.elementId);
-  if (!element) {
-    console.error('Element not found:', params.elementId);
+  const source = elementRegistry.get(params.sourceId);
+  const target = elementRegistry.get(params.targetId);
+
+  if (!source || !target) {
+    console.error('Source or target element not found:', params.sourceId, params.targetId);
     return false;
   }
 
-  // Update the name property on the business object
-  modeling.updateProperties(element, {
-    name: params.name,
-  });
+  // Find the connection between source and target
+  const connections = source.outgoing?.filter(
+    (conn: any) => conn.target?.id === params.targetId && conn.type === 'bpmn:SequenceFlow'
+  ) || [];
 
+  if (connections.length === 0) {
+    console.error('No connection found between:', params.sourceId, 'and', params.targetId);
+    return false;
+  }
+
+  // Remove all connections between these elements
+  modeling.removeElements(connections);
   return true;
 }
+
 
 export interface DeleteElementParams {
   elementId: string;
@@ -200,21 +276,70 @@ export async function exportDiagram(modeler: BpmnModeler): Promise<string> {
   return result.xml || '';
 }
 
-export function getDiagramState(modeler: BpmnModeler): { elements: Array<{ id: string; type: string; name?: string }> } {
+export interface DiagramElement {
+  id: string;
+  type: string;
+  name?: string;
+  documentation?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface DiagramConnection {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  name?: string;
+}
+
+export interface DiagramState {
+  elements: DiagramElement[];
+  connections: DiagramConnection[];
+}
+
+export function getDiagramState(modeler: BpmnModeler): DiagramState {
   const elementRegistry = modeler.get('elementRegistry') as any;
-  const elements: Array<{ id: string; type: string; name?: string }> = [];
+  const elements: DiagramElement[] = [];
+  const connections: DiagramConnection[] = [];
 
   elementRegistry.forEach((element: any) => {
-    if (element.type !== 'bpmn:Process' && element.type !== 'label') {
+    if (element.type === 'bpmn:Process' || element.type === 'label') {
+      return;
+    }
+
+    if (element.type === 'bpmn:SequenceFlow') {
+      // This is a connection
+      connections.push({
+        id: element.id,
+        sourceId: element.source?.id,
+        targetId: element.target?.id,
+        name: element.businessObject?.name,
+      });
+    } else {
+      // This is a shape element
+      // Extract documentation text if present
+      const docs = element.businessObject?.documentation;
+      const documentation = docs && docs.length > 0 ? docs[0].text : undefined;
+
       elements.push({
         id: element.id,
         type: element.type,
         name: element.businessObject?.name,
+        documentation,
+        x: element.x,
+        y: element.y,
+        width: element.width,
+        height: element.height,
       });
     }
   });
 
-  return { elements };
+  console.log('elements', elements);
+  console.log('connections', connections);
+
+  return { elements, connections };
 }
 
 export function findElementByName(modeler: BpmnModeler, name: string): string | null {

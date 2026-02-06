@@ -1,39 +1,44 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import BpmnModeler from 'bpmn-js/lib/Modeler';
 import { useModeler } from '../contexts/ModelerContext';
 import type { Theme } from '../App';
+import { INITIAL_DIAGRAM } from '../hooks/useSessionStorage';
 
 interface BpmnCanvasProps {
   theme: Theme;
+  sessionId: string;
+  initialXml: string;
+  onDiagramChange: (xml: string) => void;
 }
 
-const INITIAL_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="BPMN Voice Bot" exporterVersion="1.0.0">
-  <bpmn2:process id="Process_1" isExecutable="false">
-    <bpmn2:startEvent id="StartEvent_1" name="Start" />
-  </bpmn2:process>
-  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
-      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
-        <dc:Bounds x="182" y="182" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="188" y="225" width="24" height="14" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-    </bpmndi:BPMNPlane>
-  </bpmndi:BPMNDiagram>
-</bpmn2:definitions>`;
-
-export default function BpmnCanvas({ theme }: BpmnCanvasProps) {
+export default function BpmnCanvas({ theme, sessionId, initialXml, onDiagramChange }: BpmnCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { setModeler } = useModeler();
+  const { setModeler, modelerRef } = useModeler();
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentSessionRef = useRef(sessionId);
 
   const isLight = theme === 'light';
 
+  // Debounced save function
+  const debouncedSave = useCallback(async () => {
+    if (!modelerRef.current) return;
+    
+    try {
+      const result = await modelerRef.current.saveXML({ format: true });
+      if (result.xml) {
+        onDiagramChange(result.xml);
+      }
+    } catch (err) {
+      console.error('Failed to save diagram:', err);
+    }
+  }, [modelerRef, onDiagramChange]);
+
+  // Initialize modeler
   useEffect(() => {
     if (!containerRef.current) return;
 
     let isDestroyed = false;
+    currentSessionRef.current = sessionId;
 
     const modeler = new BpmnModeler({
       container: containerRef.current,
@@ -41,9 +46,9 @@ export default function BpmnCanvas({ theme }: BpmnCanvasProps) {
 
     async function initDiagram() {
       try {
-        const result = await modeler.importXML(INITIAL_DIAGRAM);
+        const xmlToLoad = initialXml || INITIAL_DIAGRAM;
+        const result = await modeler.importXML(xmlToLoad);
         
-        // Check if component was unmounted during async operation
         if (isDestroyed) return;
         
         if (result.warnings?.length > 0) {
@@ -53,6 +58,29 @@ export default function BpmnCanvas({ theme }: BpmnCanvasProps) {
         const canvas = modeler.get('canvas') as any;
         canvas.zoom('fit-viewport');
         setModeler(modeler);
+
+        // Listen for changes and auto-save
+        const eventBus = modeler.get('eventBus') as any;
+        const events = [
+          'commandStack.changed',
+          'shape.changed',
+          'connection.changed',
+          'element.changed',
+        ];
+
+        events.forEach(event => {
+          eventBus.on(event, () => {
+            // Only save if this is still the active session
+            if (currentSessionRef.current !== sessionId) return;
+            
+            // Debounce saves
+            if (saveTimeoutRef.current) {
+              clearTimeout(saveTimeoutRef.current);
+            }
+            saveTimeoutRef.current = setTimeout(debouncedSave, 500);
+          });
+        });
+
       } catch (err) {
         if (!isDestroyed) {
           console.error('Failed to load BPMN diagram:', err);
@@ -64,10 +92,13 @@ export default function BpmnCanvas({ theme }: BpmnCanvasProps) {
 
     return () => {
       isDestroyed = true;
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
       modeler.destroy();
       setModeler(null);
     };
-  }, [setModeler]);
+  }, [sessionId, initialXml, setModeler, debouncedSave]);
 
   return (
     <div className="relative w-full h-full">

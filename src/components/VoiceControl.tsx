@@ -1,19 +1,35 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useGeminiLive, ConnectionStatus } from '../hooks/useGeminiLive';
 import { useModeler } from '../contexts/ModelerContext';
 import type { Theme } from '../App';
 
 interface VoiceControlProps {
   apiKey: string;
-  onUserMessage: (message: string) => void;
-  onAssistantMessage: (message: string) => void;
+  activeSessionId: string;
+  onUserMessage: (sessionId: string, message: string) => void;
+  onAssistantMessage: (sessionId: string, message: string) => void;
+  onRenameDiagram: (sessionId: string, title: string) => void;
   theme: Theme;
 }
 
-export default function VoiceControl({ apiKey, onUserMessage, onAssistantMessage, theme }: VoiceControlProps) {
+export default function VoiceControl({ apiKey, activeSessionId, onUserMessage, onAssistantMessage, onRenameDiagram, theme }: VoiceControlProps) {
   const { modelerRef } = useModeler();
   const [textInput, setTextInput] = useState('');
   const isLight = theme === 'light';
+
+  // Use refs to always have the current session ID and callbacks
+  const sessionIdRef = useRef(activeSessionId);
+  const onUserMessageRef = useRef(onUserMessage);
+  const onAssistantMessageRef = useRef(onAssistantMessage);
+  const onRenameDiagramRef = useRef(onRenameDiagram);
+
+  // Keep refs up to date
+  useEffect(() => {
+    sessionIdRef.current = activeSessionId;
+    onUserMessageRef.current = onUserMessage;
+    onAssistantMessageRef.current = onAssistantMessage;
+    onRenameDiagramRef.current = onRenameDiagram;
+  }, [activeSessionId, onUserMessage, onAssistantMessage, onRenameDiagram]);
 
   const {
     status,
@@ -26,8 +42,9 @@ export default function VoiceControl({ apiKey, onUserMessage, onAssistantMessage
   } = useGeminiLive({
     apiKey,
     modelerRef,
-    onUserTranscript: onUserMessage,
-    onAssistantResponse: onAssistantMessage,
+    onUserTranscript: (text) => onUserMessageRef.current(sessionIdRef.current, text),
+    onAssistantResponse: (text) => onAssistantMessageRef.current(sessionIdRef.current, text),
+    onRenameDiagram: (title) => onRenameDiagramRef.current(sessionIdRef.current, title),
   });
 
   const handleVoiceToggle = async () => {
@@ -100,7 +117,7 @@ export default function VoiceControl({ apiKey, onUserMessage, onAssistantMessage
             relative w-20 h-20 rounded-full flex items-center justify-center
             transition-all duration-300 ease-out
             ${isListening
-              ? isLight 
+              ? isLight
                 ? 'bg-indigo-600 shadow-[0_0_40px_rgba(99,102,241,0.4)]'
                 : 'bg-accent shadow-[0_0_40px_rgba(99,102,241,0.5)] animate-pulse-glow'
               : isLight
@@ -151,9 +168,9 @@ export default function VoiceControl({ apiKey, onUserMessage, onAssistantMessage
                          focus:outline-none focus:ring-1
                          disabled:opacity-50 disabled:cursor-not-allowed
                          ${isLight
-                           ? 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:ring-indigo-500/50'
-                           : 'bg-bg-secondary border-border text-text-primary placeholder-text-muted focus:border-accent focus:ring-accent/50'
-                         }`}
+                  ? 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:ring-indigo-500/50'
+                  : 'bg-bg-secondary border-border text-text-primary placeholder-text-muted focus:border-accent focus:ring-accent/50'
+                }`}
             />
             <button
               type="submit"
@@ -162,9 +179,9 @@ export default function VoiceControl({ apiKey, onUserMessage, onAssistantMessage
                          disabled:opacity-50 disabled:cursor-not-allowed
                          transition-colors
                          ${isLight
-                           ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                           : 'bg-accent hover:bg-accent-hover text-white'
-                         }`}
+                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  : 'bg-accent hover:bg-accent-hover text-white'
+                }`}
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />

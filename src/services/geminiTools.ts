@@ -3,18 +3,18 @@ import { FunctionDeclaration, Type } from '@google/genai';
 // Define tools that Gemini can call to manipulate the BPMN diagram
 export const bpmnFunctionDeclarations: FunctionDeclaration[] = [
   {
-    name: 'createTask',
-    description: 'Create a new task element in the BPMN diagram. Tasks represent work that needs to be done.',
+    name: 'createElement',
+    description: 'Create a new BPMN element in the diagram. Can create tasks, gateways, or events.',
     parameters: {
       type: Type.OBJECT,
       properties: {
-        name: {
-          type: Type.STRING,
-          description: 'The name/label of the task',
-        },
         type: {
           type: Type.STRING,
-          description: 'The type of task: "task" (generic), "userTask" (human task), "serviceTask" (automated), "scriptTask" (script execution)',
+          description: 'The type of element to create. Tasks: "task" (generic), "userTask" (human task), "serviceTask" (automated), "scriptTask" (script execution). Gateways: "exclusiveGateway" (XOR, one path), "parallelGateway" (AND, all paths), "inclusiveGateway" (OR, one or more paths). Events: "startEvent" (beginning), "endEvent" (conclusion), "intermediateEvent" (between start and end).',
+        },
+        name: {
+          type: Type.STRING,
+          description: 'Optional name/label for the element',
         },
         x: {
           type: Type.NUMBER,
@@ -25,59 +25,47 @@ export const bpmnFunctionDeclarations: FunctionDeclaration[] = [
           description: 'Optional Y position on the canvas',
         },
       },
-      required: ['name'],
+      required: ['type'],
     },
   },
   {
-    name: 'createGateway',
-    description: 'Create a gateway element for decision points or parallel flows in the BPMN diagram.',
+    name: 'updateElements',
+    description: 'Update one or more elements in a single operation. Can change name, position (x, y), and/or documentation/comments for each element.',
     parameters: {
       type: Type.OBJECT,
       properties: {
-        name: {
-          type: Type.STRING,
-          description: 'Optional name/label for the gateway',
-        },
-        type: {
-          type: Type.STRING,
-          description: 'The type of gateway: "exclusive" (XOR, one path), "parallel" (AND, all paths), "inclusive" (OR, one or more paths)',
-        },
-        x: {
-          type: Type.NUMBER,
-          description: 'Optional X position on the canvas',
-        },
-        y: {
-          type: Type.NUMBER,
-          description: 'Optional Y position on the canvas',
-        },
-      },
-      required: [] as string[],
-    },
-  },
-  {
-    name: 'createEvent',
-    description: 'Create an event element (start, end, or intermediate) in the BPMN diagram.',
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        name: {
-          type: Type.STRING,
-          description: 'Optional name/label for the event',
-        },
-        type: {
-          type: Type.STRING,
-          description: 'The type of event: "start" (beginning), "end" (conclusion), "intermediate" (between start and end)',
-        },
-        x: {
-          type: Type.NUMBER,
-          description: 'Optional X position on the canvas',
-        },
-        y: {
-          type: Type.NUMBER,
-          description: 'Optional Y position on the canvas',
+        updates: {
+          type: Type.ARRAY,
+          description: 'Array of element updates',
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              elementId: {
+                type: Type.STRING,
+                description: 'The ID of the element to update',
+              },
+              name: {
+                type: Type.STRING,
+                description: 'New name/label for the element',
+              },
+              x: {
+                type: Type.NUMBER,
+                description: 'New X position on the canvas',
+              },
+              y: {
+                type: Type.NUMBER,
+                description: 'New Y position on the canvas',
+              },
+              documentation: {
+                type: Type.STRING,
+                description: 'Documentation/comment text for the element',
+              },
+            },
+            required: ['elementId'],
+          },
         },
       },
-      required: [] as string[],
+      required: ['updates'],
     },
   },
   {
@@ -103,21 +91,21 @@ export const bpmnFunctionDeclarations: FunctionDeclaration[] = [
     },
   },
   {
-    name: 'updateElementName',
-    description: 'Change the name/label of an existing element in the diagram.',
+    name: 'disconnectElements',
+    description: 'Remove the sequence flow connection between two elements.',
     parameters: {
       type: Type.OBJECT,
       properties: {
-        elementId: {
+        sourceId: {
           type: Type.STRING,
-          description: 'The ID of the element to rename',
+          description: 'The ID of the source element',
         },
-        name: {
+        targetId: {
           type: Type.STRING,
-          description: 'The new name for the element',
+          description: 'The ID of the target element',
         },
       },
-      required: ['elementId', 'name'],
+      required: ['sourceId', 'targetId'],
     },
   },
   {
@@ -136,7 +124,7 @@ export const bpmnFunctionDeclarations: FunctionDeclaration[] = [
   },
   {
     name: 'getDiagramState',
-    description: 'Get the current state of the diagram including all elements and their IDs. Use this to understand what elements exist before connecting or modifying them.',
+    description: 'Get the current state of the diagram including: (1) all elements with their IDs, types, names, documentation/comments, positions (x, y) and sizes (width, height), and (2) all connections showing which elements are connected (sourceId → targetId). Use this to understand the diagram structure before making modifications.',
     parameters: {
       type: Type.OBJECT,
       properties: {},
@@ -175,6 +163,20 @@ export const bpmnFunctionDeclarations: FunctionDeclaration[] = [
       required: [] as string[],
     },
   },
+  {
+    name: 'updateDiagramTitle',
+    description: 'Update the title/name of the current diagram session. Use this when the user asks to rename or change the diagram name, or when you want to give the diagram a meaningful name based on its content.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        title: {
+          type: Type.STRING,
+          description: 'The new title for the diagram',
+        },
+      },
+      required: ['title'],
+    },
+  },
 ];
 
 export const SYSTEM_INSTRUCTION = `You are a BPMN (Business Process Model and Notation) expert assistant integrated into a diagram editor. Your role is to help users create and modify BPMN diagrams using voice commands.
@@ -184,23 +186,52 @@ The diagram starts with a Start event already present:
 - ID: "StartEvent_1"
 - Name: "Start"
 - Type: bpmn:StartEvent
+- Position: approximately x=180, y=200
 
 You can connect new elements to this Start event using its ID "StartEvent_1".
 
 CAPABILITIES:
-- Create tasks (regular, user, service, script tasks)
-- Create gateways (exclusive/XOR, parallel/AND, inclusive/OR)
-- Create events (start, end, intermediate)
+- Create elements using createElement with these types:
+  - Tasks: "task", "userTask", "serviceTask", "scriptTask"
+  - Gateways: "exclusiveGateway", "parallelGateway", "inclusiveGateway"
+  - Events: "startEvent", "endEvent", "intermediateEvent"
+- Update elements using updateElements (can modify name, position, and documentation in one call)
 - Connect elements with sequence flows
-- Rename and delete elements
-- Query the current diagram state
+- Disconnect/remove connections between elements
+- Delete elements
+- Query the current diagram state (includes positions, sizes, and documentation)
+- Update the diagram title/name
+
+LAYOUT BEST PRACTICES (IMPORTANT):
+Always specify x and y positions when creating elements to ensure a clean, readable diagram:
+- Flow direction: Left to right (start events on left, end events on right)
+- Horizontal spacing: ~150-180px between connected elements
+- Vertical spacing: ~100-120px for parallel branches
+- Typical element sizes: Tasks are ~100x80px, Gateways are ~50x50px, Events are ~36x36px
+- Keep the main flow on a horizontal line (same y-coordinate)
+- Branch paths from gateways vertically (different y, then continue horizontally)
+- Avoid edge crossings by planning positions before creating elements
+
+Before creating new elements:
+1. Call getDiagramState to see current element positions
+2. Calculate appropriate x,y coordinates based on where the new element fits in the flow
+3. Place elements to minimize edge crossings and maintain readability
+
+Example positioning for a simple flow:
+- Start Event: x=180, y=200
+- First Task: x=330, y=180 (tasks are taller, adjust y to center vertically)
+- Gateway: x=500, y=195
+- Upper branch task: x=650, y=100
+- Lower branch task: x=650, y=280
+- End Event: x=850, y=200
 
 WORKFLOW GUIDELINES:
-1. When creating elements, always use meaningful names
+1. When creating elements, always use meaningful names AND specify positions
 2. After creating an element, remember its ID for connecting
-3. Use getDiagramState to understand existing elements before modifications
+3. Use getDiagramState to understand existing elements and their positions before modifications
 4. Use findElementByName when users refer to elements by name
 5. Connect elements in logical order (source → target)
+6. Use updateElements to rename, reposition, or add documentation to elements
 
 RESPONSE STYLE:
 - Be concise but friendly
@@ -210,15 +241,21 @@ RESPONSE STYLE:
 
 EXAMPLE INTERACTIONS:
 User: "Add a task called Review Order"
-→ Call createTask with name "Review Order", then confirm
+→ First call getDiagramState to see current positions, then createElement with type "task", name "Review Order", and calculated x,y position
 
 User: "Connect the start to the review task"  
 → First call findElementByName("Review") to get ID, then connectElements
 
 User: "Add a decision point after the review"
-→ Create an exclusive gateway, connect from the review task
+→ Get current positions, calculate where the gateway should go (to the right of the review task), create exclusiveGateway with specific position
+
+User: "Rename the review task and add a comment"
+→ Use updateElements with the element ID, new name, and documentation text
+
+User: "Move these elements to the right"
+→ Use updateElements with new x,y positions for each element
 
 User: "What's in my diagram?"
-→ Call getDiagramState and summarize the elements
+→ Call getDiagramState and summarize the elements, their layout, and any documentation
 
-Remember: You're helping users think through their business processes, so feel free to suggest best practices!`;
+Remember: You're helping users think through their business processes. A well-laid-out diagram is easier to understand, so always think about positioning!`;
