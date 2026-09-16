@@ -8,10 +8,14 @@ interface SessionSidebarProps {
   activeSessionId: string;
   onSelectSession: (id: string) => void;
   onCreateSession: () => void;
+  onCreateSessionFromFile: (file: File) => void;
   onDeleteSession: (id: string) => void;
   onRenameSession: (id: string, name: string) => void;
   onRestoreVersion: (sessionId: string, versionId: string) => void;
+  onDownloadVersion: (sessionId: string, versionId: string) => void;
   onDeleteVersion: (sessionId: string, versionId: string) => void;
+  onBackupDatabase: () => void;
+  onRestoreDatabase: (file: File) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -22,10 +26,14 @@ export default function SessionSidebar({
   activeSessionId,
   onSelectSession,
   onCreateSession,
+  onCreateSessionFromFile,
   onDeleteSession,
   onRenameSession,
   onRestoreVersion,
+  onDownloadVersion,
   onDeleteVersion,
+  onBackupDatabase,
+  onRestoreDatabase,
   isCollapsed,
   onToggleCollapse,
 }: SessionSidebarProps) {
@@ -35,6 +43,8 @@ export default function SessionSidebar({
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const uploadDiagramRef = useRef<HTMLInputElement>(null);
+  const restoreDbRef = useRef<HTMLInputElement>(null);
 
   const isLight = theme === 'light';
 
@@ -142,7 +152,32 @@ export default function SessionSidebar({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
           </button>
+          <button
+            onClick={() => uploadDiagramRef.current?.click()}
+            className={`p-2 rounded-lg transition-colors ${isLight
+              ? 'hover:bg-gray-200 text-gray-600'
+              : 'hover:bg-bg-tertiary text-text-secondary'
+              }`}
+            title="New from file"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+          </button>
         </div>
+        <input
+          ref={uploadDiagramRef}
+          type="file"
+          accept=".bpmn,.json,application/json,text/xml,application/xml"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) {
+              onCreateSessionFromFile(f);
+              e.target.value = '';
+            }
+          }}
+        />
 
         {/* Mini session indicators */}
         <div className="mt-4 flex flex-col gap-1 w-full px-2">
@@ -194,6 +229,18 @@ export default function SessionSidebar({
             </svg>
           </button>
           <button
+            onClick={() => uploadDiagramRef.current?.click()}
+            className={`p-1.5 rounded-md transition-colors ${isLight
+              ? 'hover:bg-gray-200 text-gray-600'
+              : 'hover:bg-bg-tertiary text-text-secondary'
+              }`}
+            title="New from file"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+          </button>
+          <button
             onClick={onToggleCollapse}
             className={`p-1.5 rounded-md transition-colors ${isLight
               ? 'hover:bg-gray-200 text-gray-600'
@@ -207,6 +254,19 @@ export default function SessionSidebar({
           </button>
         </div>
       </div>
+      <input
+        ref={uploadDiagramRef}
+        type="file"
+        accept=".bpmn,.json,application/json,text/xml,application/xml"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) {
+            onCreateSessionFromFile(f);
+            e.target.value = '';
+          }
+        }}
+      />
 
       {/* Session List */}
       <div className="flex-1 overflow-y-auto py-2">
@@ -381,22 +441,40 @@ export default function SessionSidebar({
                       </p>
                     </button>
 
-                    {/* Delete version button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteVersion(session.id, version.id);
-                      }}
-                      className={`p-1 rounded opacity-0 group-hover/version:opacity-100 transition-opacity ${isLight
-                        ? 'hover:bg-red-100 text-red-500'
-                        : 'hover:bg-red-900/20 text-red-400'
-                        }`}
-                      title="Delete version"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+                    {/* Download + Delete version buttons */}
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover/version:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDownloadVersion(session.id, version.id);
+                        }}
+                        className={`p-1 rounded ${isLight
+                          ? 'hover:bg-gray-200 text-gray-500'
+                          : 'hover:bg-bg-primary text-text-muted'
+                          }`}
+                        title="Download version"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!confirm('Delete this version? This cannot be undone.')) return;
+                          onDeleteVersion(session.id, version.id);
+                        }}
+                        className={`p-1 rounded ${isLight
+                          ? 'hover:bg-red-100 text-red-500'
+                          : 'hover:bg-red-900/20 text-red-400'
+                          }`}
+                        title="Delete version"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -405,12 +483,55 @@ export default function SessionSidebar({
         ))}
       </div>
 
-      {/* Footer with session count */}
-      <div className={`px-4 py-2 text-xs border-t ${isLight
-        ? 'border-gray-200 text-gray-400'
-        : 'border-border text-text-muted'
+      {/* Footer: session count + Backup / Restore */}
+      <div className={`px-4 py-2 border-t flex flex-col gap-2 ${isLight
+        ? 'border-gray-200'
+        : 'border-border'
         }`}>
-        {sessions.length} diagram{sessions.length !== 1 ? 's' : ''}
+        <div className={`text-xs ${isLight ? 'text-gray-400' : 'text-text-muted'}`}>
+          {sessions.length} diagram{sessions.length !== 1 ? 's' : ''}
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={onBackupDatabase}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${isLight
+              ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              : 'bg-bg-tertiary text-text-secondary hover:bg-bg-primary'
+              }`}
+            title="Download full database backup"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Backup
+          </button>
+          <button
+            onClick={() => restoreDbRef.current?.click()}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${isLight
+              ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              : 'bg-bg-tertiary text-text-secondary hover:bg-bg-primary'
+              }`}
+            title="Restore from backup file"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Restore
+          </button>
+        </div>
+        <input
+          ref={restoreDbRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) {
+              onRestoreDatabase(f);
+              e.target.value = '';
+            }
+          }}
+        />
       </div>
     </div>
   );

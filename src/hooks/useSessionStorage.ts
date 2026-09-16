@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ChatMessage } from '../App';
+import { randomUuid } from '../randomUuid';
 
 export interface DiagramVersion {
   id: string;
@@ -38,17 +39,28 @@ export const INITIAL_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
   </bpmndi:BPMNDiagram>
 </bpmn2:definitions>`;
 
-function createNewSession(name?: string): Session {
+function createNewSession(name?: string, initialBpmnXml?: string): Session {
   const now = new Date().toISOString();
   return {
-    id: crypto.randomUUID(),
+    id: randomUuid(),
     name: name || `Diagram ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
-    bpmnXml: INITIAL_DIAGRAM,
+    bpmnXml: initialBpmnXml ?? INITIAL_DIAGRAM,
     messages: [],
     versions: [],
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function normalizeSessionsFromBackup(sessions: Session[]): Session[] {
+  return sessions.map(s => ({
+    ...s,
+    versions: s.versions || [],
+    messages: (s.messages || []).map(m => ({
+      ...m,
+      timestamp: m.timestamp instanceof Date ? m.timestamp : new Date((m as unknown as { timestamp: string }).timestamp),
+    })),
+  }));
 }
 
 function loadSessions(): Session[] {
@@ -137,6 +149,25 @@ export function useSessionStorage() {
     return newSession;
   }, []);
 
+  const createSessionFromBpmn = useCallback((bpmnXml: string, name?: string) => {
+    const newSession = createNewSession(name, bpmnXml);
+    setSessions(prev => [newSession, ...prev]);
+    setActiveSessionId(newSession.id);
+    return newSession;
+  }, []);
+
+  const restoreBackup = useCallback((backup: { sessions: Session[]; activeSessionId: string }) => {
+    const normalized = normalizeSessionsFromBackup(backup.sessions);
+    const fallback = createNewSession('My First Diagram');
+    const list = normalized.length > 0 ? normalized : [fallback];
+    const validId =
+      backup.activeSessionId && list.some(s => s.id === backup.activeSessionId)
+        ? backup.activeSessionId
+        : list[0].id;
+    setSessions(list);
+    setActiveSessionId(validId);
+  }, []);
+
   const deleteSession = useCallback((id: string) => {
     setSessions(prev => {
       const filtered = prev.filter(s => s.id !== id);
@@ -199,7 +230,7 @@ export function useSessionStorage() {
         }
         
         const newVersion: DiagramVersion = {
-          id: crypto.randomUUID(),
+          id: randomUuid(),
           bpmnXml: s.bpmnXml,
           timestamp: new Date().toISOString(),
           label,
@@ -258,6 +289,8 @@ export function useSessionStorage() {
     activeSession,
     activeSessionId,
     createSession,
+    createSessionFromBpmn,
+    restoreBackup,
     deleteSession,
     renameSession,
     updateSessionDiagram,

@@ -7,6 +7,7 @@ import ApiKeyInput from './components/ApiKeyInput';
 import ThemeSelector from './components/ThemeSelector';
 import SessionSidebar from './components/SessionSidebar';
 import { useSessionStorage } from './hooks/useSessionStorage';
+import { randomUuid } from './randomUuid';
 
 export interface ChatMessage {
   id: string;
@@ -23,6 +24,8 @@ function App() {
     activeSession,
     activeSessionId,
     createSession,
+    createSessionFromBpmn,
+    restoreBackup,
     deleteSession,
     renameSession,
     updateSessionDiagram,
@@ -69,7 +72,7 @@ function App() {
 
   const addMessage = useCallback((sessionId: string, role: 'user' | 'assistant', content: string) => {
     const newMessage: ChatMessage = {
-      id: crypto.randomUUID(),
+      id: randomUuid(),
       role,
       content,
       timestamp: new Date(),
@@ -94,6 +97,91 @@ function App() {
   const handleCreateVersion = useCallback((sessionId: string) => {
     createVersion(sessionId);
   }, [createVersion]);
+
+  const handleDownloadVersion = useCallback((sessionId: string, versionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    const version = session?.versions.find(v => v.id === versionId);
+    if (!session || !version) return;
+    const label = version.label || `v-${version.timestamp.slice(0, 19).replace(/[:T]/g, '-')}`;
+    const name = `${session.name}-${label}.bpmn`.replace(/[^\w\s.-]/g, '');
+    const blob = new Blob([version.bpmnXml], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [sessions]);
+
+  const handleCreateSessionFromFile = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      let bpmnXml: string;
+      let name: string | undefined;
+      const trimmed = text.trim();
+      if (trimmed.startsWith('<?xml') || trimmed.startsWith('<bpmn') || trimmed.startsWith('<bpmn2:')) {
+        bpmnXml = text;
+        name = file.name.replace(/\.(bpmn|xml)$/i, '') || undefined;
+      } else {
+        try {
+          const data = JSON.parse(text) as { bpmnXml?: string; name?: string; label?: string };
+          if (typeof data.bpmnXml !== 'string') {
+            alert('Invalid file: missing bpmnXml');
+            return;
+          }
+          bpmnXml = data.bpmnXml;
+          name = data.name ?? data.label ?? file.name.replace(/\.json$/i, '');
+        } catch {
+          alert('Invalid file: expected BPMN XML or JSON with bpmnXml');
+          return;
+        }
+      }
+      createSessionFromBpmn(bpmnXml, name);
+    };
+    reader.readAsText(file);
+  }, [createSessionFromBpmn]);
+
+  const handleBackupDatabase = useCallback(() => {
+    const backup = {
+      sessions: sessions.map(s => ({
+        ...s,
+        messages: s.messages.map(m => ({ ...m, timestamp: m.timestamp.toISOString() })),
+      })),
+      activeSessionId,
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bpmn-voice-bot-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [sessions, activeSessionId]);
+
+  const handleRestoreDatabase = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const backup = JSON.parse(reader.result as string) as { sessions: unknown[]; activeSessionId?: string };
+        if (!Array.isArray(backup.sessions)) {
+          alert('Invalid backup: missing sessions array');
+          return;
+        }
+        if (!confirm('Restore from backup? This will replace all current sessions and cannot be undone.')) {
+          return;
+        }
+        restoreBackup({
+          sessions: backup.sessions as Parameters<typeof restoreBackup>[0]['sessions'],
+          activeSessionId: backup.activeSessionId ?? '',
+        });
+        setCanvasKey(k => k + 1);
+      } catch {
+        alert('Invalid backup file');
+      }
+    };
+    reader.readAsText(file);
+  }, [restoreBackup]);
 
   const isLight = theme === 'light';
 
@@ -152,10 +240,14 @@ function App() {
             activeSessionId={activeSessionId}
             onSelectSession={switchSession}
             onCreateSession={() => createSession()}
+            onCreateSessionFromFile={handleCreateSessionFromFile}
             onDeleteSession={deleteSession}
             onRenameSession={renameSession}
             onRestoreVersion={handleRestoreVersion}
+            onDownloadVersion={handleDownloadVersion}
             onDeleteVersion={deleteVersion}
+            onBackupDatabase={handleBackupDatabase}
+            onRestoreDatabase={handleRestoreDatabase}
             isCollapsed={sidebarCollapsed}
             onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
           />

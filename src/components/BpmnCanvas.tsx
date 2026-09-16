@@ -33,7 +33,7 @@ export default function BpmnCanvas({ theme, sessionId, initialXml, onDiagramChan
     }
   }, [modelerRef, onDiagramChange]);
 
-  // Initialize modeler
+  // Initialize modeler - only when sessionId changes, not when initialXml changes from auto-saves
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -98,7 +98,9 @@ export default function BpmnCanvas({ theme, sessionId, initialXml, onDiagramChan
       modeler.destroy();
       setModeler(null);
     };
-  }, [sessionId, initialXml, setModeler, debouncedSave]);
+    // Only re-initialize when sessionId changes, not when initialXml changes from auto-saves
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, setModeler, debouncedSave]);
 
   return (
     <div className="relative w-full h-full">
