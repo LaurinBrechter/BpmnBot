@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ModelerProvider } from './contexts/ModelerContext';
 import BpmnCanvas from './components/BpmnCanvas';
+import ExcalidrawCanvas from './components/ExcalidrawCanvas';
 import VoiceControl from './components/VoiceControl';
 import ChatTranscript from './components/ChatTranscript';
 import ApiKeyInput from './components/ApiKeyInput';
 import ThemeSelector from './components/ThemeSelector';
 import SessionSidebar from './components/SessionSidebar';
-import { useSessionStorage } from './hooks/useSessionStorage';
+import { useSessionStorage, EMPTY_EXCALIDRAW_DATA } from './hooks/useSessionStorage';
+import type { ExcalidrawData } from './hooks/useSessionStorage';
 import { randomUuid } from './randomUuid';
 
 export interface ChatMessage {
@@ -28,7 +30,8 @@ function App() {
     restoreBackup,
     deleteSession,
     renameSession,
-    updateSessionDiagram,
+    updateSessionBpmn,
+    updateSessionExcalidraw,
     updateSessionMessages,
     createVersion,
     restoreVersion,
@@ -61,8 +64,8 @@ function App() {
   // Update document title when active session name changes
   useEffect(() => {
     document.title = activeSession?.name
-      ? `${activeSession.name} - BPMN Voice Bot`
-      : 'BPMN Voice Bot';
+      ? `${activeSession.name} - Diagram Studio`
+      : 'Diagram Studio';
   }, [activeSession?.name]);
 
   const handleApiKeyChange = (key: string) => {
@@ -84,9 +87,13 @@ function App() {
     updateSessionMessages(sessionId, updatedMessages);
   }, [sessions, updateSessionMessages]);
 
-  const handleDiagramChange = useCallback((xml: string) => {
-    updateSessionDiagram(activeSessionId, xml);
-  }, [activeSessionId, updateSessionDiagram]);
+  const handleBpmnChange = useCallback((xml: string) => {
+    updateSessionBpmn(activeSessionId, xml);
+  }, [activeSessionId, updateSessionBpmn]);
+
+  const handleExcalidrawChange = useCallback((data: ExcalidrawData) => {
+    updateSessionExcalidraw(activeSessionId, data);
+  }, [activeSessionId, updateSessionExcalidraw]);
 
   const handleRestoreVersion = useCallback((sessionId: string, versionId: string) => {
     restoreVersion(sessionId, versionId);
@@ -103,8 +110,16 @@ function App() {
     const version = session?.versions.find(v => v.id === versionId);
     if (!session || !version) return;
     const label = version.label || `v-${version.timestamp.slice(0, 19).replace(/[:T]/g, '-')}`;
-    const name = `${session.name}-${label}.bpmn`.replace(/[^\w\s.-]/g, '');
-    const blob = new Blob([version.bpmnXml], { type: 'application/xml' });
+    const isExcalidraw = session.type === 'excalidraw';
+    const name = `${session.name}-${label}.${isExcalidraw ? 'excalidraw' : 'bpmn'}`.replace(/[^\w\s.-]/g, '');
+    const content = isExcalidraw
+      ? JSON.stringify(
+        { type: 'excalidraw', version: 2, source: 'Diagram Studio', ...version.excalidrawData },
+        null,
+        2
+      )
+      : version.bpmnXml || '';
+    const blob = new Blob([content], { type: isExcalidraw ? 'application/json' : 'application/xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -154,7 +169,7 @@ function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `bpmn-voice-bot-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `diagram-studio-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }, [sessions, activeSessionId]);
@@ -198,7 +213,7 @@ function App() {
               ◈
             </span>
             <h1 className={`text-xl font-semibold tracking-tight ${isLight ? 'text-gray-900' : 'text-text-primary'}`}>
-              BPMN Voice Bot
+              Diagram Studio
             </h1>
             {/* Current session indicator */}
             {activeSession && (
@@ -239,7 +254,7 @@ function App() {
             sessions={sessions}
             activeSessionId={activeSessionId}
             onSelectSession={switchSession}
-            onCreateSession={() => createSession()}
+            onCreateSession={(type) => createSession(type)}
             onCreateSessionFromFile={handleCreateSessionFromFile}
             onDeleteSession={deleteSession}
             onRenameSession={renameSession}
@@ -254,13 +269,22 @@ function App() {
 
           {/* Canvas Section */}
           <div className={`flex-1 relative overflow-hidden ${isLight ? 'bg-white' : ''}`}>
-            {activeSession && (
+            {activeSession?.type === 'excalidraw' && (
+              <ExcalidrawCanvas
+                key={`${activeSessionId}-${canvasKey}`}
+                theme={theme}
+                sessionId={activeSessionId}
+                initialData={activeSession.excalidrawData ?? EMPTY_EXCALIDRAW_DATA}
+                onDiagramChange={handleExcalidrawChange}
+              />
+            )}
+            {activeSession?.type === 'bpmn' && (
               <BpmnCanvas
                 key={`${activeSessionId}-${canvasKey}`}
                 theme={theme}
                 sessionId={activeSessionId}
                 initialXml={activeSession.bpmnXml}
-                onDiagramChange={handleDiagramChange}
+                onDiagramChange={handleBpmnChange}
               />
             )}
           </div>
@@ -274,14 +298,23 @@ function App() {
               messages={activeSession?.messages || []}
               theme={theme}
             />
-            <VoiceControl
-              apiKey={apiKey}
-              activeSessionId={activeSessionId}
-              onUserMessage={(sessionId, msg) => addMessage(sessionId, 'user', msg)}
-              onAssistantMessage={(sessionId, msg) => addMessage(sessionId, 'assistant', msg)}
-              onRenameDiagram={(sessionId, title) => renameSession(sessionId, title)}
-              theme={theme}
-            />
+            {activeSession?.type === 'excalidraw' ? (
+              <div className={`p-4 text-sm text-center border-t ${isLight
+                ? 'border-gray-200 text-gray-500'
+                : 'border-border text-text-muted'
+                }`}>
+                Voice control isn't available for Excalidraw boards yet.
+              </div>
+            ) : (
+              <VoiceControl
+                apiKey={apiKey}
+                activeSessionId={activeSessionId}
+                onUserMessage={(sessionId, msg) => addMessage(sessionId, 'user', msg)}
+                onAssistantMessage={(sessionId, msg) => addMessage(sessionId, 'assistant', msg)}
+                onRenameDiagram={(sessionId, title) => renameSession(sessionId, title)}
+                theme={theme}
+              />
+            )}
           </aside>
         </main>
       </div>

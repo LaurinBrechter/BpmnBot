@@ -1,30 +1,33 @@
-# BPMN Voice Bot
+# Diagram Studio
 
-A voice-enabled BPMN diagram editor that lets you create and modify business process diagrams using natural language voice commands. Built with React, bpmn-js, and Google's Gemini Live API.
+A diagramming workspace that supports both BPMN process diagrams and Excalidraw whiteboards. BPMN diagrams can be created and edited using natural language voice commands. Built with React, bpmn-js, Excalidraw, and Google's Gemini Live API.
 
 ## Features
 
-- **Voice-Controlled Editing**: Create tasks, gateways, events, and connections by simply speaking
+- **Two Diagram Types**: BPMN process diagrams and Excalidraw whiteboards, chosen when you create a new diagram
+- **Voice-Controlled Editing (BPMN)**: Create tasks, gateways, events, and connections by simply speaking
 - **Real-time Bidirectional Audio**: Natural conversation flow with Gemini AI
 - **Full BPMN 2.0 Support**: Create compliant business process diagrams
 - **Modern Dark UI**: Beautiful, responsive interface built with Tailwind CSS
 - **Text Input Fallback**: Type commands if you prefer not to use voice
 
+> Voice control is currently BPMN-only; Excalidraw boards don't show the voice panel yet.
+
 ## Prerequisites
 
-- Node.js 18+ 
+- [Bun](https://bun.sh) 1.x
 - A Google Gemini API key (get one at [Google AI Studio](https://aistudio.google.com/))
 
 ## Getting Started
 
 1. **Install dependencies**
    ```bash
-   npm install
+   bun install
    ```
 
 2. **Start the development server**
    ```bash
-   npm run dev
+   bun run dev
    ```
 
 3. **Open your browser** at http://localhost:5173
@@ -45,9 +48,10 @@ A voice-enabled BPMN diagram editor that lets you create and modify business pro
 
 ## Tech Stack
 
-- **React 18** - UI framework
+- **React 19** - UI framework
 - **Vite** - Build tool
 - **bpmn-js** - BPMN 2.0 diagram renderer and modeler
+- **@excalidraw/excalidraw** - Whiteboard/sketch canvas
 - **@google/genai** - Gemini Live API SDK
 - **Tailwind CSS** - Styling
 - **TypeScript** - Type safety
@@ -57,14 +61,17 @@ A voice-enabled BPMN diagram editor that lets you create and modify business pro
 ```
 src/
 ├── components/
-│   ├── ApiKeyInput.tsx     # API key management
-│   ├── BpmnCanvas.tsx      # bpmn-js wrapper
-│   ├── ChatTranscript.tsx  # Conversation history
-│   └── VoiceControl.tsx    # Mic button and text input
+│   ├── ApiKeyInput.tsx      # API key management
+│   ├── BpmnCanvas.tsx       # bpmn-js wrapper
+│   ├── ExcalidrawCanvas.tsx # Excalidraw wrapper
+│   ├── SessionSidebar.tsx   # Diagram list, type picker, versions
+│   ├── ChatTranscript.tsx   # Conversation history
+│   └── VoiceControl.tsx     # Mic button and text input (BPMN sessions only)
 ├── contexts/
-│   └── ModelerContext.tsx  # Shared modeler instance
+│   └── ModelerContext.tsx  # Shared bpmn-js modeler instance
 ├── hooks/
-│   └── useGeminiLive.ts    # Gemini WebSocket connection
+│   ├── useGeminiLive.ts    # Gemini WebSocket connection
+│   └── useSessionStorage.ts # Session/diagram persistence
 ├── services/
 │   ├── bpmnOperations.ts   # BPMN manipulation functions
 │   └── geminiTools.ts      # Function calling definitions
@@ -72,14 +79,14 @@ src/
 │   └── bpmn-js.d.ts        # TypeScript declarations
 ├── App.tsx
 ├── main.tsx
-└── index.css               # Tailwind + bpmn-js styles
+└── index.css               # Tailwind + bpmn-js + Excalidraw styles
 ```
 
 ## Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
+- `bun run dev` - Start development server
+- `bun run build` - Build for production
+- `bun run preview` - Preview production build
 
 ## How It Works
 

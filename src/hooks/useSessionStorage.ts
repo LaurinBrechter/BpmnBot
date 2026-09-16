@@ -1,18 +1,37 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ChatMessage } from '../App';
 import { randomUuid } from '../randomUuid';
+import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types';
+import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
+
+export type DiagramType = 'bpmn' | 'excalidraw';
+
+export interface ExcalidrawData {
+  elements: readonly ExcalidrawElement[];
+  appState: Partial<AppState>;
+  files: BinaryFiles;
+}
+
+export const EMPTY_EXCALIDRAW_DATA: ExcalidrawData = {
+  elements: [],
+  appState: {},
+  files: {},
+};
 
 export interface DiagramVersion {
   id: string;
-  bpmnXml: string;
+  bpmnXml?: string;
+  excalidrawData?: ExcalidrawData;
   timestamp: string;
   label?: string;
 }
 
 export interface Session {
   id: string;
+  type: DiagramType;
   name: string;
   bpmnXml: string;
+  excalidrawData?: ExcalidrawData;
   messages: ChatMessage[];
   versions: DiagramVersion[];
   createdAt: string;
@@ -23,7 +42,7 @@ const STORAGE_KEY = 'bpmn-sessions';
 const ACTIVE_SESSION_KEY = 'bpmn-active-session';
 
 export const INITIAL_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="BPMN Voice Bot" exporterVersion="1.0.0">
+<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Diagram Studio" exporterVersion="1.0.0">
   <bpmn2:process id="Process_1" isExecutable="false">
     <bpmn2:startEvent id="StartEvent_1" name="Start" />
   </bpmn2:process>
@@ -39,12 +58,20 @@ export const INITIAL_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
   </bpmndi:BPMNDiagram>
 </bpmn2:definitions>`;
 
-function createNewSession(name?: string, initialBpmnXml?: string): Session {
+function createNewSession(
+  type: DiagramType,
+  name?: string,
+  initialBpmnXml?: string,
+  initialExcalidrawData?: ExcalidrawData
+): Session {
   const now = new Date().toISOString();
+  const defaultPrefix = type === 'excalidraw' ? 'Excalidraw Board' : 'BPMN Diagram';
   return {
     id: randomUuid(),
-    name: name || `Diagram ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
-    bpmnXml: initialBpmnXml ?? INITIAL_DIAGRAM,
+    type,
+    name: name || `${defaultPrefix} ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+    bpmnXml: type === 'bpmn' ? (initialBpmnXml ?? INITIAL_DIAGRAM) : '',
+    excalidrawData: type === 'excalidraw' ? (initialExcalidrawData ?? EMPTY_EXCALIDRAW_DATA) : undefined,
     messages: [],
     versions: [],
     createdAt: now,
@@ -52,10 +79,18 @@ function createNewSession(name?: string, initialBpmnXml?: string): Session {
   };
 }
 
+// Backfills the `type` field for sessions saved before multi-diagram-type support existed.
+function normalizeSession(s: Session): Session {
+  return {
+    ...s,
+    type: s.type ?? 'bpmn',
+    versions: s.versions || [],
+  };
+}
+
 function normalizeSessionsFromBackup(sessions: Session[]): Session[] {
   return sessions.map(s => ({
-    ...s,
-    versions: s.versions || [],
+    ...normalizeSession(s),
     messages: (s.messages || []).map(m => ({
       ...m,
       timestamp: m.timestamp instanceof Date ? m.timestamp : new Date((m as unknown as { timestamp: string }).timestamp),
@@ -68,10 +103,9 @@ function loadSessions(): Session[] {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const sessions = JSON.parse(stored) as Session[];
-      // Convert date strings back for messages and ensure versions array exists
+      // Convert date strings back for messages and ensure versions array + type exist
       return sessions.map(s => ({
-        ...s,
-        versions: s.versions || [],
+        ...normalizeSession(s),
         messages: s.messages.map(m => ({
           ...m,
           timestamp: new Date(m.timestamp),
@@ -104,7 +138,7 @@ export function useSessionStorage() {
   const [sessions, setSessions] = useState<Session[]>(() => {
     const loaded = loadSessions();
     if (loaded.length === 0) {
-      const initial = createNewSession('My First Diagram');
+      const initial = createNewSession('bpmn', 'My First Diagram');
       saveSessions([initial]);
       saveActiveSessionId(initial.id);
       return [initial];
@@ -124,7 +158,7 @@ export function useSessionStorage() {
       return loaded[0].id;
     }
     // Create new if none exist
-    const initial = createNewSession('My First Diagram');
+    const initial = createNewSession('bpmn', 'My First Diagram');
     saveSessions([initial]);
     saveActiveSessionId(initial.id);
     return initial.id;
@@ -142,15 +176,15 @@ export function useSessionStorage() {
     saveActiveSessionId(activeSessionId);
   }, [activeSessionId]);
 
-  const createSession = useCallback((name?: string) => {
-    const newSession = createNewSession(name);
+  const createSession = useCallback((type: DiagramType, name?: string) => {
+    const newSession = createNewSession(type, name);
     setSessions(prev => [newSession, ...prev]);
     setActiveSessionId(newSession.id);
     return newSession;
   }, []);
 
   const createSessionFromBpmn = useCallback((bpmnXml: string, name?: string) => {
-    const newSession = createNewSession(name, bpmnXml);
+    const newSession = createNewSession('bpmn', name, bpmnXml);
     setSessions(prev => [newSession, ...prev]);
     setActiveSessionId(newSession.id);
     return newSession;
@@ -158,7 +192,7 @@ export function useSessionStorage() {
 
   const restoreBackup = useCallback((backup: { sessions: Session[]; activeSessionId: string }) => {
     const normalized = normalizeSessionsFromBackup(backup.sessions);
-    const fallback = createNewSession('My First Diagram');
+    const fallback = createNewSession('bpmn', 'My First Diagram');
     const list = normalized.length > 0 ? normalized : [fallback];
     const validId =
       backup.activeSessionId && list.some(s => s.id === backup.activeSessionId)
@@ -173,7 +207,7 @@ export function useSessionStorage() {
       const filtered = prev.filter(s => s.id !== id);
       // Ensure at least one session exists
       if (filtered.length === 0) {
-        const newSession = createNewSession('My First Diagram');
+        const newSession = createNewSession('bpmn', 'My First Diagram');
         setActiveSessionId(newSession.id);
         return [newSession];
       }
@@ -195,11 +229,21 @@ export function useSessionStorage() {
     );
   }, []);
 
-  const updateSessionDiagram = useCallback((id: string, bpmnXml: string) => {
+  const updateSessionBpmn = useCallback((id: string, bpmnXml: string) => {
     setSessions(prev =>
       prev.map(s =>
         s.id === id
           ? { ...s, bpmnXml, updatedAt: new Date().toISOString() }
+          : s
+      )
+    );
+  }, []);
+
+  const updateSessionExcalidraw = useCallback((id: string, excalidrawData: ExcalidrawData) => {
+    setSessions(prev =>
+      prev.map(s =>
+        s.id === id
+          ? { ...s, excalidrawData, updatedAt: new Date().toISOString() }
           : s
       )
     );
@@ -220,22 +264,31 @@ export function useSessionStorage() {
     setSessions(prev =>
       prev.map(s => {
         if (s.id !== sessionId) return s;
-        
-        // Check if the diagram has actually changed
-        const lastVersionXml = s.versions.length > 0 ? s.versions[0].bpmnXml : null;
-        
-        // Skip if the diagram hasn't changed from the last version
-        if (lastVersionXml && lastVersionXml === s.bpmnXml) {
-          return s;
+
+        const lastVersion = s.versions.length > 0 ? s.versions[0] : null;
+
+        if (s.type === 'bpmn') {
+          // Skip if the diagram hasn't changed from the last version
+          if (lastVersion?.bpmnXml && lastVersion.bpmnXml === s.bpmnXml) {
+            return s;
+          }
+        } else {
+          if (
+            lastVersion?.excalidrawData &&
+            JSON.stringify(lastVersion.excalidrawData) === JSON.stringify(s.excalidrawData)
+          ) {
+            return s;
+          }
         }
-        
+
         const newVersion: DiagramVersion = {
           id: randomUuid(),
-          bpmnXml: s.bpmnXml,
+          bpmnXml: s.type === 'bpmn' ? s.bpmnXml : undefined,
+          excalidrawData: s.type === 'excalidraw' ? s.excalidrawData : undefined,
           timestamp: new Date().toISOString(),
           label,
         };
-        
+
         return {
           ...s,
           versions: [newVersion, ...s.versions],
@@ -250,13 +303,14 @@ export function useSessionStorage() {
     setSessions(prev =>
       prev.map(s => {
         if (s.id !== sessionId) return s;
-        
+
         const version = s.versions.find(v => v.id === versionId);
         if (!version) return s;
-        
+
         return {
           ...s,
-          bpmnXml: version.bpmnXml,
+          bpmnXml: s.type === 'bpmn' ? (version.bpmnXml ?? s.bpmnXml) : s.bpmnXml,
+          excalidrawData: s.type === 'excalidraw' ? (version.excalidrawData ?? s.excalidrawData) : s.excalidrawData,
           updatedAt: new Date().toISOString(),
         };
       })
@@ -293,7 +347,8 @@ export function useSessionStorage() {
     restoreBackup,
     deleteSession,
     renameSession,
-    updateSessionDiagram,
+    updateSessionBpmn,
+    updateSessionExcalidraw,
     updateSessionMessages,
     createVersion,
     restoreVersion,

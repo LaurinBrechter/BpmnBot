@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Theme } from '../App';
-import type { Session } from '../hooks/useSessionStorage';
+import type { DiagramType, Session } from '../hooks/useSessionStorage';
 
 interface SessionSidebarProps {
   theme: Theme;
   sessions: Session[];
   activeSessionId: string;
   onSelectSession: (id: string) => void;
-  onCreateSession: () => void;
+  onCreateSession: (type: DiagramType) => void;
   onCreateSessionFromFile: (file: File) => void;
   onDeleteSession: (id: string) => void;
   onRenameSession: (id: string, name: string) => void;
@@ -41,8 +41,10 @@ export default function SessionSidebar({
   const [editName, setEditName] = useState('');
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
   const editInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const newMenuRef = useRef<HTMLDivElement>(null);
   const uploadDiagramRef = useRef<HTMLInputElement>(null);
   const restoreDbRef = useRef<HTMLInputElement>(null);
 
@@ -61,6 +63,9 @@ export default function SessionSidebar({
     function handleClickOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpenId(null);
+      }
+      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) {
+        setNewMenuOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -119,6 +124,30 @@ export default function SessionSidebar({
     setExpandedSessionId(expandedSessionId === sessionId ? null : sessionId);
   };
 
+  const handleCreate = (type: DiagramType) => {
+    onCreateSession(type);
+    setNewMenuOpen(false);
+  };
+
+  const DiagramTypeIcon = ({ type }: { type: DiagramType }) => {
+    if (type === 'excalidraw') {
+      return (
+        <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="Excalidraw board">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828H9V13z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19h14" />
+        </svg>
+      );
+    }
+    return (
+      <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="BPMN diagram">
+        <circle cx="5" cy="12" r="2.5" strokeWidth={2} />
+        <rect x="10.5" y="9.5" width="6" height="5" rx="1" strokeWidth={2} />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7.5 12h3m6 0h2.5" />
+        <circle cx="19" cy="12" r="1.5" strokeWidth={2} />
+      </svg>
+    );
+  };
+
   // Collapsed state - show only toggle button
   if (isCollapsed) {
     return (
@@ -140,18 +169,50 @@ export default function SessionSidebar({
         </button>
 
         <div className="mt-4 flex flex-col gap-2">
-          <button
-            onClick={onCreateSession}
-            className={`p-2 rounded-lg transition-colors ${isLight
-              ? 'hover:bg-gray-200 text-gray-600'
-              : 'hover:bg-bg-tertiary text-text-secondary'
-              }`}
-            title="New diagram"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setNewMenuOpen(prev => !prev)}
+              className={`p-2 rounded-lg transition-colors ${isLight
+                ? 'hover:bg-gray-200 text-gray-600'
+                : 'hover:bg-bg-tertiary text-text-secondary'
+                }`}
+              title="New diagram"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+            {newMenuOpen && (
+              <div
+                ref={newMenuRef}
+                className={`absolute left-full top-0 ml-1 w-40 py-1 rounded-lg shadow-lg z-50 ${isLight
+                  ? 'bg-white border border-gray-200'
+                  : 'bg-bg-tertiary border border-border'
+                  }`}
+              >
+                <button
+                  onClick={() => handleCreate('bpmn')}
+                  className={`w-full px-3 py-1.5 text-left text-sm flex items-center gap-2 ${isLight
+                    ? 'hover:bg-gray-100 text-gray-700'
+                    : 'hover:bg-bg-secondary text-text-primary'
+                    }`}
+                >
+                  <DiagramTypeIcon type="bpmn" />
+                  BPMN Diagram
+                </button>
+                <button
+                  onClick={() => handleCreate('excalidraw')}
+                  className={`w-full px-3 py-1.5 text-left text-sm flex items-center gap-2 ${isLight
+                    ? 'hover:bg-gray-100 text-gray-700'
+                    : 'hover:bg-bg-secondary text-text-primary'
+                    }`}
+                >
+                  <DiagramTypeIcon type="excalidraw" />
+                  Excalidraw Board
+                </button>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => uploadDiagramRef.current?.click()}
             className={`p-2 rounded-lg transition-colors ${isLight
@@ -216,18 +277,50 @@ export default function SessionSidebar({
           Diagrams
         </h2>
         <div className="flex items-center gap-1">
-          <button
-            onClick={onCreateSession}
-            className={`p-1.5 rounded-md transition-colors ${isLight
-              ? 'hover:bg-gray-200 text-gray-600'
-              : 'hover:bg-bg-tertiary text-text-secondary'
-              }`}
-            title="New diagram"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setNewMenuOpen(prev => !prev)}
+              className={`p-1.5 rounded-md transition-colors ${isLight
+                ? 'hover:bg-gray-200 text-gray-600'
+                : 'hover:bg-bg-tertiary text-text-secondary'
+                }`}
+              title="New diagram"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+            {newMenuOpen && (
+              <div
+                ref={newMenuRef}
+                className={`absolute right-0 top-full mt-1 w-40 py-1 rounded-lg shadow-lg z-50 ${isLight
+                  ? 'bg-white border border-gray-200'
+                  : 'bg-bg-tertiary border border-border'
+                  }`}
+              >
+                <button
+                  onClick={() => handleCreate('bpmn')}
+                  className={`w-full px-3 py-1.5 text-left text-sm flex items-center gap-2 ${isLight
+                    ? 'hover:bg-gray-100 text-gray-700'
+                    : 'hover:bg-bg-secondary text-text-primary'
+                    }`}
+                >
+                  <DiagramTypeIcon type="bpmn" />
+                  BPMN Diagram
+                </button>
+                <button
+                  onClick={() => handleCreate('excalidraw')}
+                  className={`w-full px-3 py-1.5 text-left text-sm flex items-center gap-2 ${isLight
+                    ? 'hover:bg-gray-100 text-gray-700'
+                    : 'hover:bg-bg-secondary text-text-primary'
+                    }`}
+                >
+                  <DiagramTypeIcon type="excalidraw" />
+                  Excalidraw Board
+                </button>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => uploadDiagramRef.current?.click()}
             className={`p-1.5 rounded-md transition-colors ${isLight
@@ -304,7 +397,7 @@ export default function SessionSidebar({
                     onClick={() => onSelectSession(session.id)}
                     className="flex-1 min-w-0 text-left"
                   >
-                    <p className={`text-sm font-medium truncate ${session.id === activeSessionId
+                    <p className={`flex items-center gap-1.5 text-sm font-medium truncate ${session.id === activeSessionId
                       ? isLight
                         ? 'text-indigo-700'
                         : 'text-accent-hover'
@@ -312,7 +405,8 @@ export default function SessionSidebar({
                         ? 'text-gray-700'
                         : 'text-text-primary'
                       }`}>
-                      {session.name}
+                      <DiagramTypeIcon type={session.type} />
+                      <span className="truncate">{session.name}</span>
                     </p>
                     <p className={`text-xs mt-0.5 ${isLight ? 'text-gray-400' : 'text-text-muted'
                       }`}>

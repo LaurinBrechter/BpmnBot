@@ -1,7 +1,7 @@
 {
-  "name": "bpmn-voice-bot",
+  "name": "diagram-studio",
   "version": "1.0.0",
-  "description": "Voice-enabled BPMN diagram editor using bpmn-js and Gemini Live API",
+  "description": "Voice-enabled BPMN and Excalidraw diagram editor using bpmn-js, Excalidraw, and the Gemini Live API",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.1",
     "@google/genai": "^1.28.0",
     "bpmn-js": "^18.10.1",
     "react": "^19.2.4",
