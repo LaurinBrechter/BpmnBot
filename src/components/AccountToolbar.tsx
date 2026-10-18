@@ -1,17 +1,14 @@
 import { useState } from 'react';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import { api } from '../auth-client';
-import type { Session } from '../hooks/useSessionStorage';
-import { workspaceSchema } from '../../shared/validation';
 
-export default function AccountToolbar({ diagramId, save, status, error, importSessions }: { diagramId: string; save: () => Promise<void>; status: string; error: string; importSessions: (sessions: Session[]) => void }) {
+export default function AccountToolbar({ diagramId, save, status, error }: { diagramId: string; save: () => Promise<void>; status: string; error: string }) {
   const [open, setOpen] = useState(false);
   const [link, setLink] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const { getToken, signOut } = useAuth();
   const { user } = useUser();
-  const [legacy, setLegacy] = useState(() => Boolean(localStorage.getItem('bpmn-sessions')));
   async function run(action: () => Promise<void>) {
     setBusy(true); setNotice('');
     try { await action(); } catch (e) { setNotice(e instanceof Error ? e.message : 'Please retry.'); } finally { setBusy(false); }
@@ -19,13 +16,7 @@ export default function AccountToolbar({ diagramId, save, status, error, importS
   return <section className="border-b border-slate-700 bg-slate-900 text-slate-100 px-6 py-2 text-sm">
     <div className="flex flex-wrap items-center gap-4">
       <span className="mr-auto text-slate-400" role="status">{status}</span>
-      {legacy && <button disabled={busy} onClick={() => { try {
-        const raw = JSON.parse(localStorage.getItem('bpmn-sessions') || '[]');
-        const parsed = workspaceSchema.safeParse({ revision: 0, sessions: raw.map((s: Session) => ({ ...s, type: s.type || 'bpmn', versions: s.versions || [] })) });
-        if (!parsed.success) throw new Error('Browser data is invalid. Use your backup import instead.');
-        if (!confirm('Add diagrams from this browser to your signed-in account? Existing cloud diagrams will be kept.')) return;
-        importSessions(parsed.data.sessions as unknown as Session[]); setLegacy(false);
-      } catch (e) { setNotice(e instanceof Error ? e.message : 'Import failed'); } }}>Import browser diagrams</button>}
+
       <button disabled={busy} onClick={() => void run(save)}>Save now</button>
       <button aria-expanded={open} onClick={() => setOpen(!open)}>Share diagram</button>
       <span className="text-slate-400 truncate max-w-48">{user?.primaryEmailAddress?.emailAddress}</span>

@@ -38,7 +38,7 @@ function App({ initialWorkspace }: { initialWorkspace: import('./components/Acco
     restoreVersion,
     deleteVersion,
     switchSession,
-    save, saveStatus, saveError, importSessions,
+    save, saveStatus, saveError,
   } = useSessionStorage(initialWorkspace);
 
   const [apiKey, setApiKey] = useState<string>(() => {
@@ -248,7 +248,7 @@ function App({ initialWorkspace }: { initialWorkspace: import('./components/Acco
           </div>
         </header>
 
-        <AccountToolbar key={activeSessionId} diagramId={activeSessionId} save={save} status={saveStatus} error={saveError} importSessions={importSessions} />
+        <AccountToolbar key={activeSessionId} diagramId={activeSessionId} save={save} status={saveStatus} error={saveError} />
 
         {/* Main Content */}
         <main className="flex flex-1 overflow-hidden">
