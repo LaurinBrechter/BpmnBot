@@ -150,9 +150,6 @@ export function useSessionStorage(initial: { sessions: Session[]; revision: numb
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, []);
-  const importSessions = useCallback((imported: Session[]) => {
-    setSessions(current => [...normalizeSessionsFromBackup(imported).map(s => ({ ...s, id: randomUuid() })), ...current]);
-  }, []);
   const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
 
   const createSession = useCallback((type: DiagramType, name?: string) => {
@@ -320,7 +317,7 @@ export function useSessionStorage(initial: { sessions: Session[]; revision: numb
   }, [sessions]);
 
   return {
-    save, saveStatus, saveError, importSessions,
+    save, saveStatus, saveError,
     sessions,
     activeSession,
     activeSessionId,
