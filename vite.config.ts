@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  server: { allowedHosts: ['sb-1re6kp7h0zs2.vercel.run'] },
+  server: { allowedHosts: ['.vercel.run'] },
   plugins: [react(), {
     name: 'diagram-api',
     async configureServer(server) {
