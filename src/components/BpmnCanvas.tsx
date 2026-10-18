@@ -14,7 +14,6 @@ interface BpmnCanvasProps {
 export default function BpmnCanvas({ theme, sessionId, initialXml, onDiagramChange }: BpmnCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { setModeler, modelerRef } = useModeler();
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentSessionRef = useRef(sessionId);
 
   const isLight = theme === 'light';
@@ -73,11 +72,8 @@ export default function BpmnCanvas({ theme, sessionId, initialXml, onDiagramChan
             // Only save if this is still the active session
             if (currentSessionRef.current !== sessionId) return;
             
-            // Debounce saves
-            if (saveTimeoutRef.current) {
-              clearTimeout(saveTimeoutRef.current);
-            }
-            saveTimeoutRef.current = setTimeout(debouncedSave, 500);
+            // Cloud writes are debounced in the storage hook; capture edits before switching diagrams.
+            void debouncedSave();
           });
         });
 
@@ -92,9 +88,6 @@ export default function BpmnCanvas({ theme, sessionId, initialXml, onDiagramChan
 
     return () => {
       isDestroyed = true;
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
       modeler.destroy();
       setModeler(null);
     };

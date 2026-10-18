@@ -1,4 +1,4 @@
-import { useRef, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
@@ -13,8 +13,6 @@ interface ExcalidrawCanvasProps {
 }
 
 export default function ExcalidrawCanvas({ theme, initialData, onDiagramChange }: ExcalidrawCanvasProps) {
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // `appState.collaborators` is a Map and doesn't survive the JSON round-trip through
   // localStorage (becomes a plain object), which crashes Excalidraw's internals on mount.
   // It's only relevant for live multiplayer, which this app doesn't use, so always inject
@@ -29,13 +27,8 @@ export default function ExcalidrawCanvas({ theme, initialData, onDiagramChange }
 
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-      saveTimeoutRef.current = setTimeout(() => {
-        const { collaborators: _collaborators, ...appStateToSave } = appState;
-        onDiagramChange({ elements, appState: appStateToSave, files });
-      }, 500);
+      const { collaborators: _collaborators, ...appStateToSave } = appState;
+      onDiagramChange({ elements, appState: appStateToSave, files });
     },
     [onDiagramChange]
   );

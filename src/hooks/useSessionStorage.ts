@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { api } from '../auth-client';
+import { workspaceSchema } from '../../shared/validation';
 import type { ChatMessage } from '../App';
 import { randomUuid } from '../randomUuid';
 import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types';
@@ -37,9 +39,6 @@ export interface Session {
   createdAt: string;
   updatedAt: string;
 }
-
-const STORAGE_KEY = 'bpmn-sessions';
-const ACTIVE_SESSION_KEY = 'bpmn-active-session';
 
 export const INITIAL_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Diagram Studio" exporterVersion="1.0.0">
@@ -98,83 +97,61 @@ function normalizeSessionsFromBackup(sessions: Session[]): Session[] {
   }));
 }
 
-function loadSessions(): Session[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const sessions = JSON.parse(stored) as Session[];
-      // Convert date strings back for messages and ensure versions array + type exist
-      return sessions.map(s => ({
-        ...normalizeSession(s),
-        messages: s.messages.map(m => ({
-          ...m,
-          timestamp: new Date(m.timestamp),
-        })),
-      }));
-    }
-  } catch (e) {
-    console.error('Failed to load sessions:', e);
-  }
-  return [];
-}
+export function useSessionStorage(initial: { sessions: Session[]; revision: number }) {
+  const [sessions, setSessions] = useState<Session[]>(() => initial.sessions.length
+    ? normalizeSessionsFromBackup(initial.sessions)
+    : [createNewSession('bpmn', 'My First Diagram')]);
+  const [activeSessionId, setActiveSessionId] = useState(sessions[0].id);
+  const [saveStatus, setSaveStatus] = useState('Saved to cloud');
+  const [saveError, setSaveError] = useState('');
+  const revision = useRef(initial.revision);
+  const latest = useRef(sessions);
+  const saved = useRef(initial.sessions.length ? JSON.stringify(sessions) : '');
+  const pending = useRef<Promise<void> | null>(null);
+  latest.current = sessions;
+  const save = useCallback(async () => {
+    if (pending.current) return pending.current;
+    const operation = async () => {
+      try {
+        let payload = JSON.stringify(latest.current);
+        while (payload !== saved.current) {
+          setSaveStatus('Saving…');
+          const result = await api<{ revision: number }>('/api/workspace', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessions: JSON.parse(payload), revision: revision.current }),
+          });
+          revision.current = result.revision;
+          saved.current = payload;
+          payload = JSON.stringify(latest.current);
+        }
+        setSaveError(''); setSaveStatus('Saved to cloud');
+      } catch (error) {
+        setSaveStatus('Not saved');
+        setSaveError(error instanceof Error ? error.message : 'Save failed. Please retry.');
+        throw error;
+      }
+    };
+    pending.current = operation();
+    try { await pending.current; } finally { pending.current = null; }
+  }, []);
 
-function saveSessions(sessions: Session[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-  } catch (e) {
-    console.error('Failed to save sessions:', e);
-  }
-}
-
-function loadActiveSessionId(): string | null {
-  return localStorage.getItem(ACTIVE_SESSION_KEY);
-}
-
-function saveActiveSessionId(id: string) {
-  localStorage.setItem(ACTIVE_SESSION_KEY, id);
-}
-
-export function useSessionStorage() {
-  const [sessions, setSessions] = useState<Session[]>(() => {
-    const loaded = loadSessions();
-    if (loaded.length === 0) {
-      const initial = createNewSession('bpmn', 'My First Diagram');
-      saveSessions([initial]);
-      saveActiveSessionId(initial.id);
-      return [initial];
-    }
-    return loaded;
-  });
-
-  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    const storedId = loadActiveSessionId();
-    const loaded = loadSessions();
-    if (storedId && loaded.some(s => s.id === storedId)) {
-      return storedId;
-    }
-    // Fallback to first session
-    if (loaded.length > 0) {
-      saveActiveSessionId(loaded[0].id);
-      return loaded[0].id;
-    }
-    // Create new if none exist
-    const initial = createNewSession('bpmn', 'My First Diagram');
-    saveSessions([initial]);
-    saveActiveSessionId(initial.id);
-    return initial.id;
-  });
-
+  useEffect(() => {
+    if (JSON.stringify(sessions) === saved.current) return;
+    setSaveStatus('Unsaved changes');
+    const timer = setTimeout(() => { void save().catch(() => {}); }, 800);
+    return () => clearTimeout(timer);
+  }, [sessions, save]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (JSON.stringify(latest.current) !== saved.current) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, []);
+  const importSessions = useCallback((imported: Session[]) => {
+    setSessions(current => [...normalizeSessionsFromBackup(imported).map(s => ({ ...s, id: randomUuid() })), ...current]);
+  }, []);
   const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
-
-  // Persist sessions whenever they change
-  useEffect(() => {
-    saveSessions(sessions);
-  }, [sessions]);
-
-  // Persist active session ID
-  useEffect(() => {
-    saveActiveSessionId(activeSessionId);
-  }, [activeSessionId]);
 
   const createSession = useCallback((type: DiagramType, name?: string) => {
     const newSession = createNewSession(type, name);
@@ -191,7 +168,9 @@ export function useSessionStorage() {
   }, []);
 
   const restoreBackup = useCallback((backup: { sessions: Session[]; activeSessionId: string }) => {
-    const normalized = normalizeSessionsFromBackup(backup.sessions);
+    const parsed = workspaceSchema.safeParse({ revision: 0, sessions: backup.sessions.map(s => ({ ...s, type: s.type || 'bpmn', versions: s.versions || [] })) });
+    if (!parsed.success) throw new Error('Invalid backup data');
+    const normalized = normalizeSessionsFromBackup(parsed.data.sessions as unknown as Session[]);
     const fallback = createNewSession('bpmn', 'My First Diagram');
     const list = normalized.length > 0 ? normalized : [fallback];
     const validId =
@@ -339,6 +318,7 @@ export function useSessionStorage() {
   }, [sessions]);
 
   return {
+    save, saveStatus, saveError, importSessions,
     sessions,
     activeSession,
     activeSessionId,

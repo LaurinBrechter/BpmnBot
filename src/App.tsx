@@ -10,6 +10,7 @@ import SessionSidebar from './components/SessionSidebar';
 import { useSessionStorage, EMPTY_EXCALIDRAW_DATA } from './hooks/useSessionStorage';
 import type { ExcalidrawData } from './hooks/useSessionStorage';
 import { randomUuid } from './randomUuid';
+import AccountToolbar from './components/AccountToolbar';
 
 export interface ChatMessage {
   id: string;
@@ -20,7 +21,7 @@ export interface ChatMessage {
 
 export type Theme = 'light' | 'dark';
 
-function App() {
+function App({ initialWorkspace }: { initialWorkspace: import('./components/AccountGate').Workspace }) {
   const {
     sessions,
     activeSession,
@@ -37,7 +38,8 @@ function App() {
     restoreVersion,
     deleteVersion,
     switchSession,
-  } = useSessionStorage();
+    save, saveStatus, saveError, importSessions,
+  } = useSessionStorage(initialWorkspace);
 
   const [apiKey, setApiKey] = useState<string>(() => {
     return localStorage.getItem('gemini-api-key') || '';
@@ -245,6 +247,8 @@ function App() {
             <ApiKeyInput value={apiKey} onChange={handleApiKeyChange} theme={theme} />
           </div>
         </header>
+
+        <AccountToolbar key={activeSessionId} diagramId={activeSessionId} save={save} status={saveStatus} error={saveError} importSessions={importSessions} />
 
         {/* Main Content */}
         <main className="flex flex-1 overflow-hidden">
