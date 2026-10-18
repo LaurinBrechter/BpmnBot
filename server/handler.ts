@@ -1,9 +1,19 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
-import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
+import { verifyToken } from '@clerk/backend';
 import { and, eq, notInArray } from 'drizzle-orm';
-import { auth, trustedOrigins } from './auth.js';
 import { db, workspaces, shares } from './db.js';
+
+const trustedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
+  ...(process.env.V0_DEV_APP_URL ? [process.env.V0_DEV_APP_URL] : []),
+  ...(process.env.V0_BUILD_URL ? [process.env.V0_BUILD_URL] : []),
+  ...(process.env.V0_SANDBOX_URL ? [process.env.V0_SANDBOX_URL] : []),
+  ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+  ...(process.env.VERCEL_PROJECT_PRODUCTION_URL ? [`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`] : []),
+];
 import { workspaceSchema } from '../shared/validation.js';
 
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
@@ -29,7 +39,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   try {
     const url = new URL(req.url || '/', 'http://localhost');
     const path = url.pathname;
-    if (path.startsWith('/api/auth/')) return await toNodeHandler(auth)(req, res);
+    if (path.startsWith('/api/auth/')) throw new HttpError(404, 'Not found');
     if (path === '/api/shared' && req.method === 'GET') {
       const token = url.searchParams.get('token') || '';
       const owner = url.searchParams.get('owner') || '';
@@ -39,9 +49,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       if (!share) throw new HttpError(404, 'This link is unavailable or has been revoked.');
       return send(200, share.snapshot);
     }
-    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-    if (!session) throw new HttpError(401, 'Please sign in again.');
-    const userId = session.user.id;
+    const authorization = req.headers.authorization;
+    const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : '';
+    if (!token) throw new HttpError(401, 'Please sign in again.');
+    let userId: string;
+    try {
+      const claims = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
+      userId = claims.sub;
+    } catch {
+      throw new HttpError(401, 'Please sign in again.');
+    }
     if (req.method !== 'GET') {
       if (!req.headers.origin || !trustedOrigins.includes(req.headers.origin)) throw new HttpError(403, 'Invalid request origin');
       if (req.method !== 'DELETE' && !req.headers['content-type']?.startsWith('application/json')) throw new HttpError(415, 'JSON required');
