@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { api } from '../auth-client';
 import { workspaceSchema } from '../../shared/validation';
 import type { ChatMessage } from '../App';
@@ -98,6 +99,7 @@ function normalizeSessionsFromBackup(sessions: Session[]): Session[] {
 }
 
 export function useSessionStorage(initial: { sessions: Session[]; revision: number }) {
+  const { getToken } = useAuth();
   const [sessions, setSessions] = useState<Session[]>(() => initial.sessions.length
     ? normalizeSessionsFromBackup(initial.sessions)
     : [createNewSession('bpmn', 'My First Diagram')]);
@@ -119,7 +121,7 @@ export function useSessionStorage(initial: { sessions: Session[]; revision: numb
           const result = await api<{ revision: number }>('/api/workspace', {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessions: JSON.parse(payload), revision: revision.current }),
-          });
+          }, getToken);
           revision.current = result.revision;
           saved.current = payload;
           payload = JSON.stringify(latest.current);
